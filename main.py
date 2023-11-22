@@ -1,16 +1,43 @@
-# This is a sample Python script.
+from ultralytics import YOLO
+from flask import request, Response, Flask
+from waitress import serve
+from PIL import Image
+import json
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+app = Flask(__name__)
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+@app.route("/")
+def root():
+    with open("index.html") as file:
+        return file.read()
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+
+@app.route("/detect", methods=["POST"])
+def detect():
+    buf = request.files["image_file"]
+    boxes = detect_objects_on_image(Image.open(buf.stream))
+    return Response(
+        json.dumps(boxes),
+        mimetype='application/json'
+    )
+
+
+def detect_objects_on_image(buf):
+    model = YOLO("best.pt")
+    results = model.predict(buf)
+    result = results[0]
+    output = []
+    for box in result.boxes:
+        x1, y1, x2, y2 = [
+            round(x) for x in box.xyxy[0].tolist()
+        ]
+        class_id = box.cls[0].item()
+        prob = round(box.conf[0].item(), 2)
+        output.append([
+            x1, y1, x2, y2, result.names[class_id], prob
+        ])
+    return output
+
+
+serve(app, host='0.0.0.0', port=8080)
